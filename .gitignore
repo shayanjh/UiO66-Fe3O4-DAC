@@ -1,10 +1,7 @@
-   .ipynb_checkpoints/
-   __pycache__/
-   .DS_Store
-   *.lammpstrj
-   log.lammps
-   *.log
-   *.restart
-   WAVECAR
-   CHGCAR
-   CHG
+.ipynb_checkpoints/
+__pycache__/
+.DS_Store
+*.lammpstrj
+log.lammps
+*.log
+*.restart
