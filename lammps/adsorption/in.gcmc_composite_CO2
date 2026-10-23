@@ -1,0 +1,160 @@
+# =====================================================================
+# MD-GCMC adsorption isotherm of CO2 in a Fe3O4/UiO-66/Fe3O4
+# composite (Sections 3.2 and 3.6 of the article)
+#
+# The composite is periodic in x and y and nonperiodic in z; the Ewald
+# sum includes the slab correction. CO2 insertions are restricted to the
+# interior of the MOF slab. The CO2 fugacities are computed with
+# analysis/fugacity_mbwr.ipynb and passed to fix gcmc directly as the
+# "pressure" argument (atm), with fugacity_coeff 1.
+# The inputs that depend on the system are collected in the USER INPUTS block.
+# =====================================================================
+
+# ----------------- USER INPUTS -----------------
+# Replace each {...} below, or pass the value on the command line, e.g.,
+#   lmp -var datafile my.data -in in.gcmc_composite_CO2
+variable datafile      index {datafile}   # data file to read (equilibrated composite)
+variable output_prefix index {output_prefix}   # prefix of the restart files written after each pressure
+variable Tf            index {Tf}   # temperature (K), e.g., 303.15, 323.15, or 343.15
+variable buf           index {buf}   # inset from each face (A)
+variable P_list        index {P_list}   # pressures (bar), space separated; used only to label the output files
+variable f_list        index {f_list}   # fugacities (atm) at the pressures of P_list and T, from analysis/fugacity_mbwr.ipynb
+
+units           real
+atom_style      full
+boundary        p p f                         # nonperiodic in z
+timestep        0.5                           # fs
+
+# ----------------- 1) FORCE FIELD -----------------
+# Framework: UFF with DDEC charges; Fe3O4: ClayFF-based model; CO2: TraPPE (rigid)
+pair_style      lj/cut/coul/long 12.5
+bond_style      harmonic
+angle_style     hybrid cosine/periodic fourier harmonic
+dihedral_style  harmonic
+improper_style  fourier
+kspace_style    ewald 1.0e-4                  # Ewald summation, accuracy 1e-4
+kspace_modify   slab 3.0                      # Yeh-Berkowitz slab correction
+
+neighbor        3.0 bin
+neigh_modify    delay 0 every 1 check yes one 200000 page 2000000
+pair_modify     mix arithmetic                # Lorentz-Berthelot mixing for unlike pairs
+special_bonds   lj/coul 0.0 0.0 0.5
+
+# ----------------- 2) STRUCTURE -----------------
+# Equilibrated composite written by lammps/composite/in.composite_equilibration
+# (or structures/Composite3_UiO66_Fe3O4.data.gz after gunzip), which already contains the
+# CO2 types. Atom types:
+#   1 C_R, 2 H_, 3 O_R, 4 O_3_z, 5 Zr (framework); 6 Fe(A), 7 Fe(B), 8 O (Fe3O4);
+#   9 C, 10 O (CO2); bond type 8 and angle type 15 for CO2
+read_data       ${datafile}
+
+include         ../cross_terms_Fe3O4_UiO66.lmp   # Fe3O4-framework cross terms (SI, Table S4)
+
+group UiO type 1:5
+group Fe  type 6:8
+group fw  union UiO Fe
+
+# CO2 atom types: 9 = C, 10 = O
+mass 9  12.0107
+mass 10 15.9994
+group CO2 type 9 10
+group allatoms union fw CO2
+
+molecule   co2 CO2.txt  toff 8  boff 7  aoff 14
+
+pair_coeff 9  9  0.053649 2.80                # C (TraPPE)
+pair_coeff 10 10 0.156973 3.05                # O (TraPPE)
+bond_coeff 8 0 1.16                           # C-O, held rigid by fix rigid
+angle_coeff 15 harmonic 0 180                 # O-C-O, held rigid by fix rigid
+
+# ----------------- 3) RUNTIME -----------------
+variable Tdamp        equal 100*dt
+
+# MD-GCMC cadence (Sections 3.4 and 3.6 of the article)
+variable GCMCNevery   equal 200               # MD steps between GCMC cycles
+variable GCMCexchange equal 100               # insertion/deletion attempts per cycle
+variable GCMCmove     equal 0                 # translation/rotation moves disabled
+variable disp         equal 2.0
+variable N_equil      equal 100000            # equilibration steps at each pressure
+variable N_prod       equal 100000            # production steps at each pressure
+
+
+fix   fw_NVT fw nvt temp ${Tf} ${Tf} ${Tdamp}                           # framework and Fe3O4, NVT
+fix   nvtCO2 CO2 rigid/nvt/small molecule temp ${Tf} ${Tf} ${Tdamp} mol co2  # rigid CO2
+fix_modify nvtCO2 dynamic/dof yes
+
+# GCMC insertion region: the MOF slab, inset by "buf" from its faces so
+# that no CO2 is inserted at the Fe3O4 surface or in the interfacial gap
+compute uio_zmin UiO reduce min z
+compute uio_zmax UiO reduce max z
+thermo_style custom step temp pe c_uio_zmin c_uio_zmax
+run 0
+variable zlo_gc equal c_uio_zmin+${buf}
+variable zhi_gc equal c_uio_zmax-${buf}
+region regionGCMC block EDGE EDGE EDGE EDGE ${zlo_gc} ${zhi_gc} units box
+print "GCMC insertion region: z = ${zlo_gc} to ${zhi_gc} A"
+
+# walls at the nonperiodic z boundaries
+fix zwall     allatoms wall/lj93 zlo EDGE 0.2 3.0 8.0  zhi EDGE 0.2 3.0 8.0  units box
+fix co2_zwall CO2      wall/lj93 zlo EDGE 0.2 3.5 10.0 zhi EDGE 0.2 3.5 10.0 units box
+
+thermo          1000
+thermo_style    custom step temp pe etotal press vol
+compute_modify  thermo_temp dynamic/dof yes
+
+# ----------------- 4) DIAGNOSTICS -----------------
+variable  carbon atom "type==9"
+variable  oxygen atom "type==10"
+group     carbon dynamic CO2 var carbon
+group     oxygen dynamic CO2 var oxygen
+variable  nC     equal count(carbon)
+variable  nO     equal count(oxygen)
+variable  N      equal (v_nC+v_nO)/3          # number of adsorbed CO2 molecules
+variable  N2     equal v_N*v_N                # N^2, for fluctuation formulas
+variable  U      equal pe
+variable  UN     equal v_U*v_N
+
+# ----------------- 5) PRESSURE SWEEP -----------------
+# P_list : pressures in bar (used only to label the output files)
+# f_list : CO2 fugacity in atm at each pressure of P_list and at T = Tf,
+#          from analysis/fugacity_mbwr.ipynb (same order and length)
+variable phi    equal  1.0                    # fugacity already passed as pressure
+
+label loopP
+reset_timestep 0
+
+variable P_bar equal ${P_list}
+variable f_atm equal ${f_list}
+print "=== GCMC: P = ${P_bar} bar, f(CO2) = ${f_atm} atm, T = ${Tf} K ==="
+
+fix mygcmc CO2 gcmc ${GCMCNevery} ${GCMCexchange} ${GCMCmove} 0 1486221 &
+    ${Tf} 0.0 ${disp} mol co2 group CO2 rigid nvtCO2 tfac_insert 1 full_energy &
+    region regionGCMC pressure ${f_atm} fugacity_coeff ${phi}
+
+variable ins_att  equal f_mygcmc[3]
+variable ins_succ equal f_mygcmc[4]
+variable del_att  equal f_mygcmc[5]
+variable del_succ equal f_mygcmc[6]
+thermo_style custom step temp pe etotal press vol &
+             v_N v_ins_att v_ins_succ v_del_att v_del_succ
+
+# equilibration
+run_style verlet
+run ${N_equil}
+
+# production: step, P, N, N^2, U, U*N
+variable s equal step
+variable P equal ${P_bar}
+fix RAW all ave/time 500 20 10000 &
+    v_s v_P v_N v_N2 v_U v_UN &
+    file raw_P=${P_bar}.txt ave one
+run ${N_prod}
+
+unfix RAW
+unfix mygcmc
+write_data ${output_prefix}_P=${P_bar}.data    # optional restart file
+
+next f_list P_list
+jump SELF loopP
+
+print "=== Pressure sweep complete ==="
