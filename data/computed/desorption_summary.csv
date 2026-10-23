@@ -1,0 +1,2 @@
+composite,wt_pct_Fe3O4,L_MOF_nm,N0,N_end,released_pct,N_ref_uniform,f_end,t_cool_ps,run_length_ps,t50_ps,t90_ps,t90_reached,uniform_t50_ps,uniform_t90_ps,uniform_released_pct,peak_iface_dTdz_K_per_A
+Composite 3,15,73.5118,2162.8636,216.6667,89.9824,232.5238,1.0082,1260.0,1345.0,183.5,541.5,True,52.5,99.0,89.2687,3.4238

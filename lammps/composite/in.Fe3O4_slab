@@ -1,0 +1,57 @@
+# =====================================================================
+# Fe3O4 slab (Section 3.2 of the article)
+#
+# The Fe3O4 cell (structures/Fe3O4_min.data; ClayFF-based model of
+# Gursoy et al.) is replicated so that the lateral box lengths of the slab
+# are as close as possible to those of the UiO-66 slab, and the slab is
+# relaxed by energy minimization and a short NVT run.
+# The inputs that depend on the system are collected in the USER INPUTS block.
+# =====================================================================
+
+# ----------------- USER INPUTS -----------------
+# Replace each {...} below, or pass the value on the command line, e.g.,
+#   lmp -var datafile Fe3O4_min.data -var nx 7 -var ny 7 -var nz 1 -in in.Fe3O4_slab
+variable datafile      index {datafile}   # Fe3O4 cell (structures/Fe3O4_min.data)
+variable nx            index {nx}         # replicas along x
+variable ny            index {ny}         # replicas along y
+variable nz            index {nz}         # replicas along z (slab thickness)
+variable outfile       index {outfile}    # relaxed Fe3O4 slab
+variable seed          index {seed}       # random seed
+
+units          real
+atom_style     full
+boundary       p p p
+timestep       0.5
+
+bond_style     none
+angle_style    none
+dihedral_style none
+improper_style none
+pair_style     lj/cut/coul/long 12.5
+kspace_style   ewald 1.0e-4
+
+neighbor       2.0 bin
+neigh_modify   delay 0 every 1 check yes
+
+read_data      ${datafile}
+replicate      ${nx} ${ny} ${nz}
+
+thermo_style   custom step temp pe etotal press vol lx ly lz
+thermo         200
+
+# energy minimization with box relaxation
+fix            boxrel all box/relax iso 1.0 vmax 0.001
+min_style      cg
+minimize       1.0e-6 1.0e-8 10000 10000
+unfix          boxrel
+
+# short NVT at 300 K
+velocity       all create 300.0 ${seed} mom yes rot no dist gaussian loop local
+fix            pre all nve/limit 0.01
+run            1000
+unfix          pre
+fix            nvt all nvt temp 300.0 300.0 50.0
+run            10000
+unfix          nvt
+
+write_data     ${outfile}

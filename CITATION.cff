@@ -1,0 +1,32 @@
+cff-version: 1.2.0
+message: "If you use these files, please cite the article below."
+title: "Direct Air Capture of CO2 by a UiO-66/Fe3O4 Composite: Experiments and Molecular Simulations (data and code)"
+authors:
+  - family-names: Jalalmanesh
+    given-names: Shayan
+    affiliation: University of Southern California
+  - family-names: Jia
+    given-names: Xiaohao
+    affiliation: University of Miami
+  - family-names: Rezaei
+    given-names: Fateme
+    affiliation: University of Miami
+  - family-names: Sahimi
+    given-names: Muhammad
+    affiliation: University of Southern California
+    email: moe@usc.edu
+license: MIT
+preferred-citation:
+  type: article
+  title: "Experimental Study and Molecular Dynamics Simulations of Direct Air Capture of CO2 by a Metal-Organic Framework - Iron Oxide Composite"
+  authors:
+    - family-names: Jalalmanesh
+      given-names: Shayan
+    - family-names: Jia
+      given-names: Xiaohao
+    - family-names: Rezaei
+      given-names: Fateme
+    - family-names: Sahimi
+      given-names: Muhammad
+  journal: Langmuir
+  status: submitted

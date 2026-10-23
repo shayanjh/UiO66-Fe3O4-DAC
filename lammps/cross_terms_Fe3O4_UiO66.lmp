@@ -1,0 +1,49 @@
+# =====================================================================
+# Fe3O4-framework Lennard-Jones cross terms (Section 3.2 of the article;
+# SI, Section S2 and Table S4)
+#
+# The interactions within Fe3O4 follow the ClayFF-based model of Gursoy
+# et al. (pair coefficients in the Fe3O4 data file). In that model the
+# Fe sites have an almost vanishing LJ well depth, so that the Lorentz-
+# Berthelot combination with the framework would give practically no
+# dispersion attraction across the interface. The Fe3O4-framework cross
+# terms are therefore Lorentz-Berthelot combinations of the UFF
+# parameters of the framework with the Fe and O parameters of Kerisit
+# et al.:
+#     eps_ij = sqrt(eps_i * eps_j),   sigma_ij = (sigma_i + sigma_j)/2
+#
+# These pair_coeff commands must come after read_data, and override the
+# mixing of the data file coefficients for these pairs only.
+# Atom types: 1 C_R, 2 H_, 3 O_R, 4 O_3_z, 5 Zr (framework);
+#             6 Fe(A), 7 Fe(B), 8 O (Fe3O4)
+# =====================================================================
+
+# Kerisit et al. (eps in kcal/mol, sigma in A)
+variable eps_Fe  equal 0.30
+variable sig_Fe  equal 1.853
+variable eps_Ox  equal 0.20
+variable sig_Ox  equal 3.127
+
+# UFF (framework)
+variable eps_C   equal 0.105
+variable sig_C   equal 3.430851
+variable eps_H   equal 0.044
+variable sig_H   equal 2.571134
+variable eps_O   equal 0.060
+variable sig_O   equal 3.118146
+variable eps_Zr  equal 0.069
+variable sig_Zr  equal 2.783168
+
+# Fe (both sites) - framework
+pair_coeff 6*7 1 $(sqrt(v_eps_Fe*v_eps_C))  $((v_sig_Fe+v_sig_C)/2)     # Fe - C_R
+pair_coeff 6*7 2 $(sqrt(v_eps_Fe*v_eps_H))  $((v_sig_Fe+v_sig_H)/2)     # Fe - H_
+pair_coeff 6*7 3 $(sqrt(v_eps_Fe*v_eps_O))  $((v_sig_Fe+v_sig_O)/2)     # Fe - O_R
+pair_coeff 6*7 4 $(sqrt(v_eps_Fe*v_eps_O))  $((v_sig_Fe+v_sig_O)/2)     # Fe - O_3_z
+pair_coeff 6*7 5 $(sqrt(v_eps_Fe*v_eps_Zr)) $((v_sig_Fe+v_sig_Zr)/2)    # Fe - Zr
+
+# O (Fe3O4) - framework
+pair_coeff 1 8 $(sqrt(v_eps_Ox*v_eps_C))  $((v_sig_Ox+v_sig_C)/2)       # C_R - O(oxide)
+pair_coeff 2 8 $(sqrt(v_eps_Ox*v_eps_H))  $((v_sig_Ox+v_sig_H)/2)       # H_ - O(oxide)
+pair_coeff 3 8 $(sqrt(v_eps_Ox*v_eps_O))  $((v_sig_Ox+v_sig_O)/2)       # O_R - O(oxide)
+pair_coeff 4 8 $(sqrt(v_eps_Ox*v_eps_O))  $((v_sig_Ox+v_sig_O)/2)       # O_3_z - O(oxide)
+pair_coeff 5 8 $(sqrt(v_eps_Ox*v_eps_Zr)) $((v_sig_Ox+v_sig_Zr)/2)      # Zr - O(oxide)

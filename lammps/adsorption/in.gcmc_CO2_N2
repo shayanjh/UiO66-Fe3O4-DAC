@@ -1,0 +1,168 @@
+# =====================================================================
+# MD-GCMC adsorption of a CO2/N2 mixture in UiO-66
+#
+# Each species is exchanged with its own reservoir. The fugacities of CO2
+# and N2 in the mixture at each total pressure are computed beforehand
+# with analysis/fugacity_mbwr.ipynb (mixture section, with the mole
+# fractions below) and passed to fix gcmc directly as the "pressure"
+# argument (atm), with fugacity_coeff 1.
+# The inputs that depend on the system are collected in the USER INPUTS block.
+# =====================================================================
+
+# ----------------- USER INPUTS -----------------
+# Replace each {...} below, or pass the value on the command line, e.g.,
+#   lmp -var datafile my.data -in in.gcmc_CO2_N2
+variable datafile      index {datafile}   # data file to read (framework)
+variable output_prefix index {output_prefix}   # prefix of the restart files written after each pressure
+variable Tf            index {Tf}   # temperature (K), e.g., 303.15, 323.15, or 343.15
+variable xCO2          index {xCO2}   # mole fraction of CO2 in the gas (0.15 in the article)
+variable P_list        index {P_list}   # pressures (bar), space separated; used only to label the output files
+variable fC_list       index {fC_list}   # fugacities of CO2 in the mixture (atm) at the pressures of P_list
+variable fN_list       index {fN_list}   # fugacities of N2 in the mixture (atm) at the pressures of P_list
+
+units           real
+atom_style      full
+boundary        p p p
+timestep        0.5                           # fs
+
+# ----------------- 1) FORCE FIELD -----------------
+# Framework: UFF with DDEC charges; guests: TraPPE (rigid)
+pair_style      lj/cut/coul/long 12.5
+bond_style      harmonic
+angle_style     hybrid cosine/periodic fourier harmonic
+dihedral_style  harmonic
+improper_style  fourier
+kspace_style    ewald 1.0e-4                  # Ewald summation, accuracy 1e-4
+
+neighbor        2.0 bin
+neigh_modify    delay 0 every 1 check yes
+pair_modify     tail yes mix arithmetic       # Lorentz-Berthelot mixing for unlike pairs
+special_bonds   lj/coul 0.0 0.0 1.0
+dielectric      1.0
+
+# ----------------- 2) STRUCTURE -----------------
+read_data       ${datafile} &
+                extra/atom/types 3 &
+                extra/bond/types 2 &
+                extra/angle/types 1 &
+                extra/bond/per/atom 3 &
+                extra/angle/per/atom 1 &
+                extra/special/per/atom 3
+
+group UiO type 1:5                            # framework atom types 1-5
+
+# CO2 atom types: 6 = C, 7 = O;  N2 atom type: 8 = N
+mass 6 12.0107
+mass 7 15.9994
+group CO2 type 6 7
+mass 8 14.0067
+group N_2 type 8
+
+molecule   co2 CO2.txt  toff 5  boff 7  aoff 14
+molecule   n2  N2.txt   toff 7  boff 8  aoff 15
+
+pair_coeff 6 6 0.053649 2.80                  # C (CO2, TraPPE)
+pair_coeff 7 7 0.156973 3.05                  # O (CO2, TraPPE)
+bond_coeff 8 0 1.16                           # C-O, held rigid by fix rigid
+angle_coeff 15 harmonic 0 180                 # O-C-O, held rigid by fix rigid
+pair_coeff 8 8 0.071500 3.31                  # N (N2, TraPPE)
+bond_coeff 9 0 1.095                          # N-N, held rigid by fix rigid
+
+# ----------------- 3) RUNTIME -----------------
+variable Tdamp        equal 100*dt
+
+# MD-GCMC cadence (Sections 3.4 and 3.6 of the article)
+variable GCMCNevery   equal 200               # MD steps between GCMC cycles
+variable GCMCexchange equal 100               # insertion/deletion attempts per cycle
+variable GCMCmove     equal 0                 # translation/rotation moves disabled
+variable disp         equal 2.0
+variable N_equil      equal 100000            # equilibration steps at each pressure
+variable N_prod       equal 100000            # production steps at each pressure
+
+
+fix   UiO_NVT UiO nvt temp ${Tf} ${Tf} ${Tdamp}
+fix   nvtCO2 CO2 rigid/nvt/small molecule temp ${Tf} ${Tf} ${Tdamp} mol co2
+fix_modify nvtCO2 dynamic/dof yes
+fix   nvtN2 N_2 rigid/nvt/small molecule temp ${Tf} ${Tf} ${Tdamp} mol n2
+fix_modify nvtN2 dynamic/dof yes
+
+region regionGCMC block EDGE EDGE EDGE EDGE EDGE EDGE
+
+thermo          1000
+thermo_style    custom step temp pe etotal press vol
+compute_modify  thermo_temp dynamic/dof yes
+
+# ----------------- 4) DIAGNOSTICS -----------------
+variable  carbon atom "type==6"
+variable  oxygen atom "type==7"
+group     carbon dynamic CO2 var carbon
+group     oxygen dynamic CO2 var oxygen
+variable  nC     equal count(carbon)
+variable  nO     equal count(oxygen)
+variable  NC     equal (v_nC+v_nO)/3          # adsorbed CO2 molecules
+variable  nitro  atom "type==8"
+group     nitro  dynamic N_2 var nitro
+variable  nN     equal count(nitro)/2         # adsorbed N2 molecules
+variable  N      equal v_nN+v_NC              # total adsorbed molecules
+variable  N2     equal v_N*v_N                # N^2, for fluctuation formulas
+variable  U      equal pe
+variable  UN     equal v_U*v_N
+
+# ----------------- 5) PRESSURE SWEEP -----------------
+# mole fractions of the gas phase (used in the fugacity notebook)
+variable xN2  equal 1.0-v_xCO2
+
+# P_list  : total pressures in bar (used only to label the output files)
+# fC_list : fugacity of CO2 in the mixture (atm) at each pressure of P_list
+# fN_list : fugacity of N2 in the mixture (atm) at each pressure of P_list
+variable phi     equal 1.0                    # fugacities already passed as pressures
+
+label loopP
+reset_timestep 0
+
+variable P_bar equal ${P_list}
+variable fCO2  equal ${fC_list}
+variable fN2   equal ${fN_list}
+print "=== GCMC: P = ${P_bar} bar, f(CO2) = ${fCO2} atm, f(N2) = ${fN2} atm, T = ${Tf} K ==="
+
+fix ngcmc N_2 gcmc ${GCMCNevery} ${GCMCexchange} ${GCMCmove} 0 3487621 &
+    ${Tf} 0.0 ${disp} mol n2 group N_2 rigid nvtN2 tfac_insert 1 full_energy &
+    region regionGCMC pressure ${fN2} fugacity_coeff ${phi}
+
+fix cgcmc CO2 gcmc ${GCMCNevery} ${GCMCexchange} ${GCMCmove} 0 1486221 &
+    ${Tf} 0.0 ${disp} mol co2 group CO2 rigid nvtCO2 tfac_insert 1 full_energy &
+    region regionGCMC pressure ${fCO2} fugacity_coeff ${phi}
+
+variable ins_catt  equal f_cgcmc[3]
+variable ins_csucc equal f_cgcmc[4]
+variable del_catt  equal f_cgcmc[5]
+variable del_csucc equal f_cgcmc[6]
+variable ins_natt  equal f_ngcmc[3]
+variable ins_nsucc equal f_ngcmc[4]
+variable del_natt  equal f_ngcmc[5]
+variable del_nsucc equal f_ngcmc[6]
+thermo_style custom step temp pe etotal press vol v_nN v_NC v_N &
+             v_ins_catt v_ins_csucc v_del_catt v_del_csucc &
+             v_ins_natt v_ins_nsucc v_del_natt v_del_nsucc
+
+# equilibration
+run_style verlet
+run ${N_equil}
+
+# production: step, P, N(N2), N(CO2), N, N^2, U, U*N
+variable s equal step
+variable P equal ${P_bar}
+fix RAW all ave/time 500 20 10000 &
+    v_s v_P v_nN v_NC v_N v_N2 v_U v_UN &
+    file raw_P=${P_bar}.txt ave one
+run ${N_prod}
+
+unfix RAW
+unfix ngcmc
+unfix cgcmc
+write_data ${output_prefix}_P=${P_bar}.data    # optional restart file
+
+next P_list fC_list fN_list
+jump SELF loopP
+
+print "=== Pressure sweep complete ==="

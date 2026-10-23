@@ -1,0 +1,142 @@
+# =====================================================================
+# Magnetic desorption: CO2 desorption from the composite with heating
+# localized in the Fe3O4 slabs (Section 3.7 of the article; SI, Table S10)
+#
+# Only the Fe3O4 slabs are thermostated, which mimics the heat generated
+# in the oxide by magnetic induction; the MOF evolves in NVE and is heated
+# by conduction across the interface. GCMC exchange with a CO2 reservoir
+# at 1 bar continues throughout, with insertions restricted to the MOF and
+# the acceptance temperature set to the current mean temperature of the MOF.
+#   Phase 0: 25 ps at 303 K, both phases thermostated
+#   Phase 1: oxide heated at 1.5 K/ps to the set point T_set
+#   Phase 2: oxide held at T_set until the mean MOF temperature is 363 K
+#   Phase 3: oxide cooled at 1.5 K/ps to 378 K, then held
+# The inputs that depend on the system are collected in the USER INPUTS block.
+# =====================================================================
+
+# ----------------- USER INPUTS -----------------
+# Replace each {...} below, or pass the value on the command line, e.g.,
+#   lmp -var datafile my.data -in in.desorption_magnetic
+variable datafile      index {datafile}   # CO2 loaded composite (final configuration of the composite adsorption run at 1 bar)
+variable outfile       index {outfile}    # data file written at the end of the run
+variable T_set         index {T_set}      # K, oxide set point (418, 463, and 483 K for Composites 1 to 3 in the article)
+variable n_final       index {n_final}    # number of 1 ps blocks in the final hold at 378 K
+variable f_atm         index {f_atm}      # CO2 fugacity (atm) at 1 bar and 303.15 K, from analysis/fugacity_mbwr.ipynb
+variable seed          index {seed}       # random seed
+
+variable Ti        equal 303.15            # K, initial temperature
+variable T_stop    equal 363.15            # K, mean MOF temperature that ends the hold
+variable T_final   equal 378.15            # K, oxide temperature after cooling
+variable rate      equal 1.5               # K per ramp step of 2,000 MD steps (1 ps)
+
+units           real
+atom_style      full
+boundary        p p f
+timestep        0.5
+
+pair_style      lj/cut/coul/long 12.5
+pair_modify     mix arithmetic
+kspace_style    ewald 1.0e-4
+kspace_modify   slab 3.0
+special_bonds   lj/coul 0.0 0.0 0.5
+
+bond_style      harmonic
+angle_style     hybrid cosine/periodic fourier harmonic
+dihedral_style  harmonic
+improper_style  fourier
+
+neighbor        3.0 bin
+neigh_modify    delay 0 every 1 check yes
+
+read_data       ${datafile}   # final configuration of the composite adsorption run at 1 bar
+include         ../cross_terms_Fe3O4_UiO66.lmp   # Fe3O4-framework cross terms (SI, Table S4)
+
+group  mof    type 1 2 3 4 5
+group  fe     type 6 7 8
+group  solid  union mof fe
+group  CO2    type 9 10
+molecule co2 CO2.txt toff 8 boff 7 aoff 14         # copy from structures/
+
+compute T_mof mof temp
+compute T_fe  fe  temp
+compute_modify T_mof dynamic/dof yes
+variable Tmof equal c_T_mof
+variable nCO2 equal count(CO2)/3
+
+compute zmin mof reduce min z
+compute zmax mof reduce max z
+thermo_style custom step temp c_T_mof c_T_fe c_zmin c_zmax pe v_nCO2
+thermo       1000
+compute_modify thermo_temp dynamic/dof yes
+run 0
+region  mof_region block EDGE EDGE EDGE EDGE $(c_zmin+1.0) $(c_zmax-1.0) units box
+
+fix  co2rig CO2 rigid/small molecule mol co2
+fix  zwall  all wall/lj93 zlo EDGE 0.2 3.0 8.0 zhi EDGE 0.2 3.0 8.0 units box
+
+# time series and temperature profile T(z) in 1.5 A bins
+fix  track all ave/time 50 20 1000 v_Tmof c_T_fe v_nCO2 file desorption_timeseries.txt
+compute zbin solid chunk/atom bin/1d z lower 1.5 units box
+fix  Tz solid ave/chunk 10 200 2000 zbin temp file Tz_profile.txt
+
+# Phase 0: equilibration at 303 K, both phases thermostated (25 ps)
+fix  nvt_solid solid nvt temp ${Ti} ${Ti} 100.0
+fix  gcmc CO2 gcmc 500 100 0 0 ${seed} ${Ti} 0.0 2.0 mol co2 rigid co2rig &
+     full_energy region mof_region pressure ${f_atm} fugacity_coeff 1.0
+run  50000
+unfix gcmc
+unfix nvt_solid
+
+# ---------------- heating localized in Fe3O4 ----------------
+fix  nve_mof mof nve
+
+# Phase 1: oxide heated at 1.5 K/ps from Ti to T_set
+variable n_ramp equal round((v_T_set-v_Ti)/v_rate)
+variable i loop ${n_ramp}
+label ramp
+  fix nvt_fe fe nvt temp $(v_Ti+(v_i-1)*v_rate) $(v_Ti+v_i*v_rate) 100.0
+  fix gcmc CO2 gcmc 500 100 0 0 ${seed} $(v_Tmof) 0.0 2.0 mol co2 rigid co2rig &
+      full_energy region mof_region pressure ${f_atm} fugacity_coeff 1.0
+  run 2000
+  unfix gcmc
+  unfix nvt_fe
+next i
+jump SELF ramp
+
+# Phase 2: oxide held at T_set until the mean MOF temperature reaches T_stop
+fix  nvt_fe fe nvt temp ${T_set} ${T_set} 100.0
+variable j loop 1000
+label hold
+  fix gcmc CO2 gcmc 500 100 0 0 ${seed} $(v_Tmof) 0.0 2.0 mol co2 rigid co2rig &
+      full_energy region mof_region pressure ${f_atm} fugacity_coeff 1.0
+  run 2000
+  unfix gcmc
+  if "${Tmof} >= ${T_stop}" then "jump SELF hold_done"
+next j
+jump SELF hold
+label hold_done
+unfix nvt_fe
+
+# Phase 3: oxide cooled at 1.5 K/ps to T_final, then held
+variable n_cool equal round((v_T_set-v_T_final)/v_rate)
+variable k loop ${n_cool}
+label cool
+  fix nvt_fe fe nvt temp $(v_T_set-(v_k-1)*v_rate) $(v_T_set-v_k*v_rate) 100.0
+  fix gcmc CO2 gcmc 500 100 0 0 ${seed} $(v_Tmof) 0.0 2.0 mol co2 rigid co2rig &
+      full_energy region mof_region pressure ${f_atm} fugacity_coeff 1.0
+  run 2000
+  unfix gcmc
+  unfix nvt_fe
+next k
+jump SELF cool
+
+fix  nvt_fe fe nvt temp ${T_final} ${T_final} 100.0
+variable m loop ${n_final}
+label final_hold
+  fix gcmc CO2 gcmc 500 100 0 0 ${seed} $(v_Tmof) 0.0 2.0 mol co2 rigid co2rig &
+      full_energy region mof_region pressure ${f_atm} fugacity_coeff 1.0
+  run 2000
+  unfix gcmc
+next m
+jump SELF final_hold
+write_data ${outfile}

@@ -1,0 +1,55 @@
+# =====================================================================
+# Relaxation of the UiO-66 cell and replication along z
+# (Section 3.2 of the article)
+#
+# The cell with UFF parameters and DDEC charges (structures/data.UiO-66.ddec)
+# is relaxed by energy minimization with box relaxation, followed by NVT
+# MD at 300 K, and is then replicated along z so that the slab cut from it
+# by build_composite.py has the required thickness.
+# The inputs that depend on the system are collected in the USER INPUTS block.
+# =====================================================================
+
+# ----------------- USER INPUTS -----------------
+# Replace each {...} below, or pass the value on the command line, e.g.,
+#   lmp -var datafile data.UiO-66.ddec -in in.UiO66_relax
+variable datafile      index {datafile}   # UiO-66 cell (structures/data.UiO-66.ddec)
+variable nz            index {nz}         # number of replicas along z
+variable outfile       index {outfile}    # relaxed and replicated cell
+variable seed          index {seed}       # random seed
+
+units          real
+atom_style     full
+boundary       p p p
+timestep       0.5
+
+bond_style     harmonic
+angle_style    hybrid cosine/periodic fourier
+dihedral_style harmonic
+improper_style fourier
+pair_style     lj/cut/coul/long 12.5
+pair_modify    mix arithmetic
+kspace_style   ewald 1.0e-4
+special_bonds  lj/coul 0.0 0.0 0.5
+
+neighbor       2.0 bin
+neigh_modify   delay 0 every 1 check yes
+
+read_data      ${datafile}
+
+thermo_style   custom step temp pe etotal press vol lx ly lz
+thermo         200
+
+# energy minimization with isotropic box relaxation
+fix            boxrel all box/relax iso 0.0 vmax 0.001
+minimize       1.0e-4 1.0e-6 5000 10000
+unfix          boxrel
+
+# NVT at 300 K
+velocity       all create 300.0 ${seed} mom yes rot no dist gaussian
+fix            nvt all nvt temp 300.0 300.0 50.0
+run            20000
+unfix          nvt
+
+# replication along z
+replicate      1 1 ${nz}
+write_data     ${outfile}
