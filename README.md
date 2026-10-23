@@ -63,7 +63,7 @@ pip install -r requirements.txt
 
 1. **Fugacities.** Compute the fugacities at the temperatures and pressures of interest with `analysis/fugacity_mbwr.ipynb`.
 2. **Isotherms in UiO-66.** Run `lammps/adsorption/in.gcmc_CO2`, `in.gcmc_N2`, `in.gcmc_CO2_N2`, and `in.gcmc_CO2_H2O`, with the pressures in `P_list` and the fugacities in `f_list` (or `fC_list` and `fN_list`).
-3. **Composite.** Build and equilibrate the composite as described in `lammps/composite/README.md` (or start from the equilibrated Composite 3 in `structures/Composite3_UiO66_Fe3O4.data`), and compute its CO₂ isotherm with `lammps/adsorption/in.gcmc_composite_CO2`.
+3. **Composite.** Build and equilibrate the composite as described in `lammps/composite/README.md` (or start from the equilibrated Composite 3 in `structures/Composite3_UiO66_Fe3O4.data.gz`; decompress it with `gunzip` before use), and compute its CO₂ isotherm with `lammps/adsorption/in.gcmc_composite_CO2`.
 4. **Desorption.** Starting from the CO₂-loaded composite at 1 bar, run `lammps/desorption/in.desorption_magnetic` and `lammps/desorption/in.desorption_uniform`.
 5. **Analysis.** Convert the output into uptakes and fit the isotherms with `analysis/adsorption_analysis.py`, and analyze the desorption runs with `analysis/desorption_metrics.py`.
 
