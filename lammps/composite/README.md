@@ -1,6 +1,6 @@
 # Building the Fe₃O₄/UiO-66/Fe₃O₄ composite
 
-The composite is a UiO-66 slab, H-capped at its two faces, placed between two Fe₃O₄ slabs, with the system periodic in x and y and nonperiodic in z (Section 3.2 of the article and Section S3 of the SI). The Fe₃O₄ weight fraction is set by the thickness of the UiO-66 slab. The equilibrated Composite 3 (15 wt % Fe₃O₄) is given in `structures/Composite3_UiO66_Fe3O4.data`; it already contains the CO₂ atom types and can be used directly in `../adsorption/in.gcmc_composite_CO2`, so that steps 1 to 5 are needed only to build other composites.
+The composite is a UiO-66 slab, H-capped at its two faces, placed between two Fe₃O₄ slabs, with the system periodic in x and y and nonperiodic in z (Section 3.2 of the article and Section S3 of the SI). The Fe₃O₄ weight fraction is set by the thickness of the UiO-66 slab. The equilibrated Composite 3 (15 wt % Fe₃O₄) is given in `structures/Composite3_UiO66_Fe3O4.data.gz` (decompress it with `gunzip`); it already contains the CO₂ atom types and can be used directly in `../adsorption/in.gcmc_composite_CO2`, so that steps 1 to 5 are needed only to build other composites.
 
 ## Steps
 
