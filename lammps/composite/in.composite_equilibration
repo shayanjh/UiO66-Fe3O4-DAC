@@ -11,7 +11,7 @@
 # ----------------- USER INPUTS -----------------
 # Replace each {...} below, or pass the value on the command line, e.g.,
 #   lmp -var datafile my.data -in in.composite_equilibration
-variable datafile      index {datafile}   # assembled composite (output of build_composite.py, or structures/Composite3_UiO66_Fe3O4.data)
+variable datafile      index {datafile}   # assembled composite (output of build_composite.py)
 variable outfile       index {outfile}    # equilibrated composite
 variable seed          index {seed}   # random seed
 
